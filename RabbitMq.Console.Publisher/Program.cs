@@ -1,29 +1,25 @@
-﻿using System.Text;
-using RabbitMQ.Client;
+﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using RabbitMq.Console.Publisher;
+using RabbitMq.Console.Publisher.Configuration;
 
-var factory = new ConnectionFactory
+var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { Args = args, ContentRootPath = AppContext.BaseDirectory });
+
+builder.Services.AddOptions<RabbitMqOptions>().Bind(builder.Configuration.GetSection(RabbitMqOptions.SectionName)).ValidateDataAnnotations().ValidateOnStart();
+
+builder.Services.AddTransient<HelloWorldPublisher>();
+
+using var host = builder.Build();
+
+await host.StartAsync();
+
+try
 {
-    Uri = new Uri("amqp://guest:guest@localhost:5672/")
-};
+    var publisher = host.Services.GetRequiredService<HelloWorldPublisher>();
 
-await using var connection = await factory.CreateConnectionAsync();
-await using var channel = await connection.CreateChannelAsync();
-
-await channel.QueueDeclareAsync(
-    queue: "hello-queue",
-    durable: true,
-    exclusive: false,
-    autoDelete: false,
-    arguments: null
-);
-
-var message = "Hello World";
-var body = Encoding.UTF8.GetBytes(message);
-
-await channel.BasicPublishAsync(
-    exchange: string.Empty,
-    routingKey: "hello-queue",
-    body: body
-);
-
-Console.WriteLine($"Message sent: {message}");
+    await publisher.PublishAsync();
+}
+finally
+{
+    await host.StopAsync();
+}
